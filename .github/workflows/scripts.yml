@@ -12,10 +12,8 @@ jobs:
     - name: Generate test data
       run: |
         .\generate-specimens-windows.bat
-        .\generate-specimens-redirected-storage.bat
     - uses: actions/upload-artifact@v7
       with:
         name: specimens-windows
         path: |
           specimens/*/*.vhd
-          specimens-redirected/*/*.vhd

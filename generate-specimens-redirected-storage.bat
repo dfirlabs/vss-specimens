@@ -46,7 +46,7 @@ if exist "%specimenspath%" (
 
 mkdir "%specimenspath%"
 
-rem Create a dynamic-size VHD image with a NTFS file system and unit size 512 and 2 volume snapshots
+rem Create 2 dynamic-size VHD images with a NTFS file system and unit size 512
 set unitsize=512
 set imagesize=128
 set mainimagename=main_vss.vhd
@@ -72,14 +72,22 @@ echo assign letter=y >> CreateVHD.diskpart
 
 call :run_diskpart CreateVHD.diskpart
 
-vssadmin delete shadowstorage /for=x: /on=x: /all 2>nul
+rem Ensure X: and Y: have some time to initialize
+choice /t 5 /d y > nul
+
+rem Note that not all versions of vssadmin support these commands
+vssadmin delete shadowstorage /for=x: 2>nul
 vssadmin add shadowstorage /for=x: /on=y: /maxsize=unbounded
+
+vssadmin list shadowstorage
 
 "%VSHADOW_EXE%" -p x:
 
 call :create_test_file_entries x
 
 "%VSHADOW_EXE%" -p x:
+
+vssadmin list shadows
 
 echo select vdisk file=%cd%\%specimenspath%\%mainimagename% > UnmountVHD.diskpart
 echo detach vdisk >> UnmountVHD.diskpart
@@ -95,14 +103,20 @@ rem Creates test file entries
 SETLOCAL
 SET driveletter=%1
 
-rem Create an emtpy file
+rem Create an empty file
 type nul >> %driveletter%:\emptyfile
 
 rem Create a directory
 mkdir %driveletter%:\testdir1
 
-rem Create a file
+rem Create a file that can be stored as inline data
 echo My file > %driveletter%:\testdir1\testfile1
+
+rem Create a file that cannot be stored as inline data
+copy LICENSE %driveletter%:\testdir1\TestFile2
+
+rem Create a file with a long filename
+type nul >> "%driveletter%:\My long, very long file name, so very long"
 
 rem Create a hard link to a file
 mklink /H %driveletter%:\file_hardlink1 %driveletter%:\testdir1\testfile1
@@ -116,9 +130,29 @@ mklink /J %driveletter%:\directory_junction1 %driveletter%:\testdir1
 rem Create a symbolic link to a directory
 mklink /D %driveletter%:\directory_symboliclink1 %driveletter%:\testdir1
 
-rem Create a file with an altenative data stream (ADS)
-type nul >> %driveletter%:\ads1
-echo My ADS > %driveletter%:\ads1:myads
+rem Create a file with an alternative data stream (ADS)
+type nul >> %driveletter%:\file_ads1
+echo My file ADS > %driveletter%:\file_ads1:myads
+
+rem Create a directory with an alternative data stream (ADS)
+mkdir %driveletter%:\directory_ads1
+echo My directory ADS > %driveletter%:\directory_ads1:myads
+
+rem Create a file with valid data size set
+copy LICENSE %driveletter%:\testdir1\file_valid_data_size1
+fsutil file setEOF %driveletter%:\testdir1\file_valid_data_size1 30000
+fsutil file setValidData %driveletter%:\testdir1\file_valid_data_size1 18652
+
+rem Create a file with short name set
+echo My short file > %driveletter%:\testdir1\file_short_name1
+fsutil file setShortName %driveletter%:\testdir1\file_short_name1 short1
+
+rem Create a file with a sparse data run
+copy LICENSE %driveletter%:\testdir1\file_sparse1
+fsutil sparse setflag %driveletter%:\testdir1\file_sparse1
+fsutil sparse setRange %driveletter%:\testdir1\file_sparse1 0 18000
+
+rem Create a case-sensitive directory
 
 ENDLOCAL
 exit /b 0

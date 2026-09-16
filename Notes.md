@@ -1,76 +1,89 @@
+# Notes
+
+## Test image
+
 These notes originate from the [libvshadow project](https://github.com/libyal/libvshadow).
 
-# Test image
-Instructions to create VSS test images. These instruction assume you both have a Linux and Windows Vista or later machine available.
+Instructions to create VSS test images. These instruction assume you both have a Linux and Windows 
+Vista or later machine available.
 
 Start out on Linux.
 
 Create a partition of 1G (1 GiB) of type 7 HPFS/NTFS/exFAT:
-```
+
+```bash
 sudo fdisk /dev/sdh1
 ```
 
-Note that according to the following [technet article](http://social.technet.microsoft.com/Forums/en-US/dataprotectionmanager2012beta/thread/75be8322-4350-4df2-bc17-b4d60b4f4c81) the NTFS volume must be at least 1 GB to be able to store Volume Shadow Snapshots. We're using 1 GiB to be on the safe side.
+Note that according to the following [technet article](http://social.technet.microsoft.com/Forums/en-US/dataprotectionmanager2012beta/thread/75be8322-4350-4df2-bc17-b4d60b4f4c81)
+the NTFS volume must be at least 1 GB to be able to store Volume Shadow Snapshots. We're using 1
+GiB to be on the safe side.
 
 Fill the test parition with 0-byte values.
-```
+
+```bash
 sudo dd if=/dev/zero of=/dev/sdh
 ```
 
 Next add sector markers e.g. with the following Python script:
-```
+
+```python
 #!/usr/bin/python
 import argparse
 import os
 
 parser = argparse.ArgumentParser(
-          description="Mark every block in a file.")
-
+    description="Mark every block in a file."
+)
 parser.add_argument(
- "filename", metavar="filename", type=unicode, nargs=1,
-  help="the name of the file to mark")
-
+    "filename", metavar="filename", type=unicode, nargs=1,
+    help="the name of the file to mark"
+)
 parser.add_argument(
- "-b", metavar="block_size", type=int, action="store",
- default=512, help="the block size")
-
+    "-b", metavar="block_size", type=int, action="store",
+    default=512, help="the block size"
+)
 arguments = parser.parse_args()
 
-file_object = open( arguments.filename[ 0 ], "r+b" )
+file_object = open(arguments.filename[ 0 ], "r+b")
 
-file_object.seek( 0, os.SEEK_END )
+file_object.seek(0, os.SEEK_END)
 
 file_size = file_object.tell()
 
 block_size = arguments.b
 
-for offset in range( 0, file_size, block_size ):
-	file_object.seek( offset, os.SEEK_SET )
+for offset in range(0, file_size, block_size):
+	file_object.seek(offset, os.SEEK_SET)
 
-	file_object.write( "0x{0:08x}".format( offset ) )
+	file_object.write("0x{0:08x}".format(offset))
 
 file_object.close()
 ```
 
-```
+```bash
 sudo python script.py /dev/sdh1
 ```
 
 Make sure to sync the changes to the disk:
-```
+
+```bash
 sudo umount /dev/sdh1
 ```
 
 Switch to Windows.
 
-Quick format the partition as an NTFS volume. For the sake of these instructions we assign it drive letter F.
+Quick format the partition as an NTFS volume. For the sake of these instructions we assign it drive
+letter F.
 
-Get a copy of diskshadow.exe. This tools is part of Windows 2008 server and later but works on Windows 7 as well.
+Get a copy of diskshadow.exe. This tools is part of Windows 2008 server and later but works on
+Windows 7 as well.
 
 Run diskshadow as Administrator and run the following commands to manually create a snapshot:
-```
+
+```text
 SET CONTEXT PERSISTENT
-ADD VOLUME F:
+ADD VOLUME X:
 CREATE
 ```
 
@@ -79,25 +92,32 @@ The test scenarios mentioned below require having a least 3 snapshots.
 After we're done with creating snapshots, safely remove the drive and switch back to Linux.
 
 To create a RAW image of the NTFS volume with the snapshots.
-```
+
+```bash
 sudo dd if=dev/sdh1 of=vsstest.raw
 ```
 
 ## Test scenarios
+
 For the following test scenarios uses range that contain sector markers e.g.
 
-```
+```text
 01450000  30 78 30 31 35 35 30 30  30 30 00 00 00 00 00 00  |0x01550000......|
 01450010  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
 ...
 014501f0  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
 ```
 
-The difference between the offset and the sector marker is cause by the fact that the offset is relative from the start of the volume and the sector marker relative from the start of the disk, which in this case is 0x100000.
+The difference between the offset and the sector marker is cause by the fact that the offset is
+relative from the start of the volume and the sector marker relative from the start of the disk,
+which in this case is 0x100000.
 
 ### Block descriptors
-Find the store block list offset of the most recent store e.g. 0x31cdc000. Find the offset and values of the last block descriptor e.g. a block descriptor at offset: 0x31cdfd20
-```
+
+Find the store block list offset of the most recent store e.g. 0x31cdc000. Find the offset and
+values of the last block descriptor e.g. a block descriptor at offset: 0x31cdfd20
+
+```text
 original offset             : 0x14f70000
 relative offset             : 0x0078c000
 offset                      : 0x32464000
@@ -106,8 +126,11 @@ allocation bitmap           : 0x00000000
 ```
 
 #### Block descriptor: 0x00000000
-Find a block inside the store with sector markers e.g. 0x32468000 for this block we manually add a block descriptor e.g.
-```
+
+Find a block inside the store with sector markers e.g. 0x32468000 for this block we manually add a
+block descriptor e.g.
+
+```text
 original offset             : 0x01450000
 relative offset             : 0x00790000
 offset                      : 0x32468000
@@ -115,11 +138,13 @@ flags                       : 0x00000000
 allocation bitmap           : 0x00000000
 ```
 
-On Windows when reading block 0x01450000 it should now map to 0x32468000. The sector marker should confirm this.
+On Windows when reading block 0x01450000 it should now map to 0x32468000. The sector marker should
+confirm this.
 
 #### Block descriptor: 0x00000001
 
 #### Block descriptor: 0x00000002
+
 * flags: 0x00000002, allocation bitmap: 0x000000ff
 * flags: 0x00000002, allocation bitmap: 0x0000ff00
 * flags: 0x00000002, allocation bitmap: 0x00ff0000
@@ -132,8 +157,10 @@ On Windows when reading block 0x01450000 it should now map to 0x32468000. The se
 
 #### Block descriptor: 0x00000004
 
-Find a block inside the store with sector markers e.g. 0x3246c000 for this block we manually add a block descriptor e.g.
-```
+Find a block inside the store with sector markers e.g. 0x3246c000 for this block we manually add a
+block descriptor e.g.
+
+```text
 original offset             : 0x01454000
 relative offset             : 0x00794000
 offset                      : 0x3246c000
@@ -141,9 +168,11 @@ flags                       : 0x00000004
 allocation bitmap           : 0x00000000
 ```
 
-Make sure that the original offset points somewhere allocated. On Windows when reading block 0x01454000 it should be not changed.
+Make sure that the original offset points somewhere allocated. On Windows when reading block
+0x01454000 it should be not changed.
 
 #### Block descriptor: 0x00000008
+
 * flags: 0x00000008
 * flags: 0x00000018
 * flags: 0x00000028
@@ -155,12 +184,14 @@ Make sure that the original offset points somewhere allocated. On Windows when r
 #### To do
 
 Do the same for single block descriptors with the following characteristics:
+
 * flags: 0x00000010
 * flags: 0x00000020
 * flags: 0x00000040
 * flags: 0x00000080
 
 Unsupported flags:
+
 * flags: 0x00000030
 * flags: 0x00000038
 * flags: 0x00000050
@@ -179,14 +210,17 @@ Overlay block descriptors:
 
 **TODO**
 
-# Useful commands and scripts
+## Useful commands and scripts
+
 Listing the shadows of a specific volume:
-```
-vssadmin list shadows  /For=F:
+
+```text
+vssadmin list shadows  /For=X:
 ```
 
 Python script to write block descriptors test scenarios:
-```
+
+```python
 #!/usr/bin/python
 import argparse
 import os
@@ -241,15 +275,15 @@ class BlockDescriptor( object ):
     self.offset += 0x4000
 
 parser = argparse.ArgumentParser(
-          description="Write block descriptor test scenarios.")
-
+    description="Write block descriptor test scenarios."
+)
 parser.add_argument(
- "filename", metavar="filename", type=unicode, nargs=1,
-  help="the name of the file to write to")
-
+    "filename", metavar="filename", type=unicode, nargs=1,
+    help="the name of the file to write to"
+)
 parser.add_argument(
- "-r", action="store_true", help="revert the changes")
-
+    "-r", action="store_true", help="revert the changes"
+)
 arguments = parser.parse_args()
 
 block_descriptor_data_offset = 0x31cdfd40
@@ -259,14 +293,27 @@ block_descriptor.flags = 0x00000000
 byte_stream = block_descriptor.copy_to_byte_stream()
 
 if arguments.r:
-  byte_stream = '\0' * len( byte_stream )
+    byte_stream = '\0' * len( byte_stream )
 
 if len( byte_stream ) > 0x4000 - ( block_descriptor_data_offset % 0x4000 ):
-  print "Block descriptor test data too large for store block."
+    print "Block descriptor test data too large for store block."
 else:
-  file_object = open( arguments.filename[ 0 ], "r+b" )
-  file_object.seek( block_descriptor_data_offset, os.SEEK_SET )
-  file_object.write( byte_stream )
-  file_object.close()
+    file_object = open( arguments.filename[ 0 ], "r+b" )
+    file_object.seek( block_descriptor_data_offset, os.SEEK_SET )
+    file_object.write( byte_stream )
+    file_object.close()
 ```
 
+## Redirected shadowstorage
+
+Redirected shadowstorage appears to be a Windows server only feature and does not appear to work on
+virtual disks (VHD/VHDX), both "generate-specimens-redirected-storage.bat" and
+"generate-specimens-redirected-storage.ps1" are unsuccessful attempts of getting it to work with
+virtual disks.
+
+A method that did up ended working with Windows Server 2019 and QEMU:
+
+* Create 2 1 GiB qcow2 disk images and attach these to the VM (main and storage)
+* Within Windows use Disk manager to initialze both disks as Basic NTFS
+* From File Explorer "Configure Shadow Copies" and assign the storage volume as the storage area
+  for the main volume.
